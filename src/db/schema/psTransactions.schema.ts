@@ -5,9 +5,19 @@ export class Transaction {
   isAllowed: boolean;
   @Prop({ required: true })
   transactionId: string;
-  @Prop()
-  externalId?: string;
+  @Prop({ unique: true, required: true })
+  externalId: string;
   @Prop()
   amount?: string;
+  @Prop({ type: Number, default: null })
+  reason?: number;
+  @Prop({ type: Number, required: true })
+  state: number;
+  @Prop({ type: Number, required: true, default: Date.now() })
+  create_time: number;
+  @Prop({ type: Number, required: true, default: 0 })
+  perform_time: number;
+  @Prop({ type: Number, required: true, default: 0 })
+  cancel_time: number;
 }
 export const PsTransactionSchema = SchemaFactory.createForClass(Transaction);

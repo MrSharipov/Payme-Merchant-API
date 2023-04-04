@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { RpcException } from '@jashkasoft/nestjs-json-rpc';
+import { HttpException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { IPsTransactions } from 'src/db/interface/psTransactions.interface';
@@ -18,28 +19,76 @@ export class PaymeService {
   }
 
   async createTransaction(payload: any) {
-    console.log(payload.id);
     const psTransaction = await this.psTransactionsModel.create({
       isAllowed: true,
       transactionId: await uuidv4(),
       externalId: payload.id,
+      amount: payload.amounts,
+      state: 1,
     });
+    if (!psTransaction) {
+      throw new HttpException('Transaction is not found', 404);
+    }
     return {
-      create_time: Date.now(),
+      create_time: psTransaction.create_time,
       transaction: await psTransaction.transactionId,
       state: 1,
     };
   }
 
-  performTransaction(payload: any) {
-    return { info: 'Hi perform', ...payload };
+  async performTransaction(payload: any) {
+    const performTime = Date.now();
+    const psTransaction = await this.psTransactionsModel.findOneAndUpdate(
+      {
+        externalId: payload.id,
+      },
+      { perform_time: performTime, state: 2 },
+    );
+
+    if (!psTransaction) {
+      throw new RpcException('Transaction is not found', 404);
+    }
+    return {
+      transaction: psTransaction.transactionId,
+      perform_time: performTime,
+      state: 2,
+    };
   }
 
-  cancelTransaction(payload: any) {
-    return { info: 'Hi cancel', ...payload };
+  async cancelTransaction(payload: any) {
+    const cancelTime = Date.now();
+    const psTransaction = await this.psTransactionsModel.findOneAndUpdate(
+      {
+        externalId: payload.id,
+      },
+      { cancel_time: cancelTime, state: -2, reason: payload.reason },
+    );
+
+    if (!psTransaction) {
+      throw new RpcException('Transaction is not found', 404);
+    }
+    return {
+      transaction: psTransaction.transactionId,
+      cancel_time: cancelTime,
+      state: -2,
+    };
   }
 
-  checkTransaction(payload: any) {
-    return { info: 'Hi check', ...payload };
+  async checkTransaction(payload: any) {
+    const psTransaction = await this.psTransactionsModel.findOne({
+      externalId: payload.id,
+    });
+    if (!psTransaction) {
+      throw new RpcException('Transaction is not found', 404);
+    }
+
+    return {
+      create_time: psTransaction.create_time,
+      perform_time: psTransaction.perform_time,
+      cancel_time: psTransaction.cancel_time,
+      transaction: psTransaction.transactionId,
+      state: psTransaction.state,
+      reason: psTransaction.reason,
+    };
   }
 }
