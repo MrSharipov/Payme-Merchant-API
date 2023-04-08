@@ -7,8 +7,12 @@ export class Transaction {
   transactionId: string;
   @Prop({ unique: true, required: true })
   externalId: string;
+  @Prop({ required: true })
+  externalTime: number;
   @Prop()
   amount?: string;
+  @Prop({ type: String, required: true })
+  orderId: string;
   @Prop({ type: Number, default: null })
   reason?: number;
   @Prop({ type: Number, required: true })

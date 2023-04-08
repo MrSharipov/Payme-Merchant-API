@@ -7,10 +7,14 @@ import {
   RpcMethodHandler,
 } from '@jashkasoft/nestjs-json-rpc';
 import { PaymeService } from './payme.service';
+import { Global, UseGuards } from '@nestjs/common';
+import { AuthGuard } from 'src/auth.guard';
 
 @RpcHandler({
   method: '',
 })
+@Global()
+@UseGuards(AuthGuard)
 export class PaymeController {
   constructor(private readonly paymeService: PaymeService) {}
 

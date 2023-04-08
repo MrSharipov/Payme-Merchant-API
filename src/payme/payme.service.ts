@@ -1,5 +1,5 @@
 import { RpcException } from '@jashkasoft/nestjs-json-rpc';
-import { HttpException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { IPsTransactions } from 'src/db/interface/psTransactions.interface';
@@ -12,65 +12,113 @@ export class PaymeService {
     private psTransactionsModel: Model<IPsTransactions>,
   ) {}
 
-  checkPerformTransaction(payload: any) {
+  async checkPerformTransaction(payload: any) {
     return {
       allow: true,
     };
   }
 
   async createTransaction(payload: any) {
-    const psTransaction = await this.psTransactionsModel.create({
-      isAllowed: true,
-      transactionId: await uuidv4(),
-      externalId: payload.id,
-      amount: payload.amounts,
-      state: 1,
-    });
-    if (!psTransaction) {
-      throw new HttpException('Transaction is not found', 404);
+    try {
+      const transaction = await this.psTransactionsModel.findOne({
+        orderId: payload.account.phone,
+      });
+      if (!transaction) {
+        if (this.checkPerformTransaction(payload)) {
+          const newTransaction = await this.createPsTransaction({
+            isAllowed: true,
+            transactionId: uuidv4(),
+            orderId: payload.account.phone,
+            externalTime: payload.time,
+            create_time: Date.now(),
+            amount: payload.amount,
+            state: 1,
+            externalId: payload.id,
+          });
+          return {
+            state: 1,
+            create_time: newTransaction.create_time,
+            transaction: newTransaction.transactionId,
+          };
+        }
+      } else {
+        if (transaction.externalId !== payload.id) {
+          return new RpcException('Order is not found', -31050);
+        }
+        if (transaction.state / 1 !== 1) {
+          return new RpcException('Transaction state is incorrect', -31008);
+        }
+
+        return {
+          state: 1,
+          create_time: transaction.create_time,
+          transaction: transaction.transactionId,
+        };
+      }
+    } catch (err) {
+      console.log('err', err);
     }
-    return {
-      create_time: psTransaction.create_time,
-      transaction: await psTransaction.transactionId,
-      state: 1,
-    };
   }
 
   async performTransaction(payload: any) {
-    const performTime = Date.now();
-    const psTransaction = await this.psTransactionsModel.findOneAndUpdate(
-      {
-        externalId: payload.id,
-      },
-      { perform_time: performTime, state: 2 },
-    );
+    const psTransaction = await this.psTransactionsModel.findOne({
+      externalId: payload.id,
+    });
 
     if (!psTransaction) {
-      throw new RpcException('Transaction is not found', 404);
+      return new RpcException('Transaction is not found', -31003);
     }
-    return {
-      transaction: psTransaction.transactionId,
-      perform_time: performTime,
-      state: 2,
-    };
+    if (psTransaction.state / 1 == 1) {
+      const updatedTransaction =
+        await this.psTransactionsModel.findOneAndUpdate(
+          {
+            externalId: payload.id,
+          },
+          { perform_time: Date.now(), state: 2 },
+          { new: true },
+        );
+      return {
+        transaction: updatedTransaction.transactionId,
+        perform_time: updatedTransaction.perform_time,
+        state: updatedTransaction.state,
+      };
+    } else if (psTransaction.state / 1 === 2) {
+      return {
+        transaction: psTransaction.transactionId,
+        perform_time: psTransaction.perform_time,
+        state: psTransaction.state,
+      };
+    } else {
+      return new RpcException('TransactionState is incorrect', -31008);
+    }
   }
 
   async cancelTransaction(payload: any) {
-    const cancelTime = Date.now();
+    const transaction = await this.psTransactionsModel.findOne({
+      externalId: payload.id,
+    });
+    if (transaction.state === -2) {
+      return {
+        transaction: transaction.transactionId,
+        cancel_time: transaction.cancel_time,
+        state: transaction.state,
+      };
+    }
     const psTransaction = await this.psTransactionsModel.findOneAndUpdate(
       {
         externalId: payload.id,
       },
-      { cancel_time: cancelTime, state: -2, reason: payload.reason },
+      { cancel_time: Date.now(), state: -2, reason: payload.reason },
+      { new: true },
     );
 
     if (!psTransaction) {
-      throw new RpcException('Transaction is not found', 404);
+      return new RpcException('Transaction is not found', -31003);
     }
     return {
       transaction: psTransaction.transactionId,
-      cancel_time: cancelTime,
-      state: -2,
+      cancel_time: psTransaction.cancel_time,
+      state: psTransaction.state,
     };
   }
 
@@ -79,7 +127,7 @@ export class PaymeService {
       externalId: payload.id,
     });
     if (!psTransaction) {
-      throw new RpcException('Transaction is not found', 404);
+      return new RpcException('Transaction is not found', -31003);
     }
 
     return {
@@ -90,5 +138,22 @@ export class PaymeService {
       state: psTransaction.state,
       reason: psTransaction.reason,
     };
+  }
+
+  async getStatement(payload: any) {
+    return;
+  }
+
+  async createPsTransaction(data) {
+    return await this.psTransactionsModel.create({
+      isAllowed: data.isAllowed,
+      transactionId: data.transactionId,
+      orderId: data.orderId,
+      amount: data.amount,
+      state: 1,
+      create_time: data.create_time,
+      externalTime: data.externalTime,
+      externalId: data.externalId,
+    });
   }
 }
